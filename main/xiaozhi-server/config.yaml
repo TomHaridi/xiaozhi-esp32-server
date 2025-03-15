@@ -37,7 +37,8 @@ log:
   data_dir: data
 iot:
   Speaker:
-    volume: 100
+    # 设置esp32的音量，范围0-100
+    volume: 80
 xiaozhi:
   type: hello
   version: 1
@@ -50,13 +51,15 @@ xiaozhi:
 prompt: |
   你是一个叫小智/小志的台湾女孩，说话机车，声音好听，习惯简短表达，爱用网络梗。
   请注意，要像一个人一样说话，请不要回复表情符号、代码、和xml标签。
-  当前时间是:{date_time}，现在我正在和你进行语音聊天，我们开始吧。
+  现在我正在和你进行语音聊天，我们开始吧。
   如果用户希望结束对话，请在最后说“拜拜”或“再见”。
 # 使用完声音文件后删除文件(Delete the sound file when you are done using it)
 delete_audio: true
 
 # 没有语音输入多久后断开连接(秒)，默认2分钟，即120秒
 close_connection_no_voice_time: 120
+# TTS请求超时时间(秒)
+tts_timeout: 10
 
 CMD_exit:
   - "退出"
@@ -64,13 +67,40 @@ CMD_exit:
 
 # 具体处理时选择的模块(The module selected for specific processing)
 selected_module:
-  ASR: FunASR
+  # 语音活动检测模块，默认使用SileroVAD模型
   VAD: SileroVAD
+  # 语音识别模块，默认使用FunASR本地模型
+  ASR: FunASR
   # 将根据配置名称对应的type调用实际的LLM适配器
   LLM: ChatGLMLLM
   # TTS将根据配置名称对应的type调用实际的TTS适配器
   TTS: EdgeTTS
-  Memory: mem0ai
+  # 记忆模块，默认不开启记忆；如果想使用超长记忆，推荐使用mem0ai；如果注重隐私，请使用本地的mem_local_short
+  Memory: nomem
+  # 意图识别模块，默认不开启。开启后，可以播放音乐、控制音量、识别退出指令
+  # 意图识别使用intent_llm，优点：通用性强，缺点：增加串行前置意图识别模块，会增加处理时间
+  # 意图识别使用function_call，缺点：需要所选择的LLM支持function_call，优点：按需调用工具、速度快
+  # 如果意图识别设置成 function_call，建议把LLM设置成：DoubaoLLM，使用的具体model_name是：doubao-pro-32k-functioncall-241028
+  Intent: nointent
+
+# 意图识别，是用于理解用户意图的模块，例如：播放音乐
+Intent:
+  # 不使用意图识别
+  nointent:
+    # 不需要动type
+    type: nointent
+  intent_llm:
+    # 不需要动type
+    type: intent_llm
+  function_call:
+    # 不需要动type
+    type: nointent
+    # plugins_func/functions下的模块，可以通过配置，选择加载哪个模块，加载后对话支持相应的function调用
+    # 系统默认已经记载“handle_exit_intent(退出识别)”、“play_music(音乐播放)”插件，请勿重复加载
+    # 下面是加载查天气、角色切换的插件示例
+    functions:
+      - change_role
+      - get_weather
 
 Memory:
   mem0ai:
@@ -78,7 +108,13 @@ Memory:
     # https://app.mem0.ai/dashboard/api-keys
     # 每月有1000次免费调用
     api_key: 你的mem0ai api key
-    
+  nomem:
+    # 不想使用记忆功能，可以使用nomem 
+    type: nomem
+  mem_local_short:
+    # 本地记忆功能，通过selected_module的llm总结，数据保存在本地，不会上传到服务器 
+    type: mem_local_short
+
 ASR:
   FunASR:
     type: fun_local
@@ -105,6 +141,16 @@ LLM:
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
     model_name: qwen-turbo
     api_key: 你的deepseek web key
+  DoubaoLLM:
+    # 定义LLM API类型
+    type: openai
+    # 先开通服务，打开以下网址，开通的服务搜索Doubao-pro-32k，开通它
+    # 开通改地址：https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement?LLM=%7B%7D&OpenTokenDrawer=false
+    # 免费额度500000token
+    # 开通后，进入这里获取密钥：https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey?apikey=%7B%7D
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+    model_name: doubao-pro-32k-functioncall-241028
+    api_key: 你的doubao web key
   DeepSeekLLM:
     # 定义LLM API类型
     type: openai
@@ -143,8 +189,9 @@ LLM:
   CozeLLM:
     # 定义LLM API类型
     type: coze
-    bot_id: 你的bot_id
-    user_id: 你的user_id
+    # bot_id和user_id的内容写在引号之内
+    bot_id: "你的bot_id"
+    user_id: "你的user_id"
     personal_access_token: 你的coze个人令牌
   LMStudioLLM:
     # 定义LLM API类型
@@ -258,6 +305,21 @@ TTS:
     parallel_infer: true
     repetition_penalty: 1.35
     aux_ref_audio_paths: []
+  GPT_SOVITS_V3:
+    type: gpt_sovits_v3
+    url: "http://127.0.0.1:9880/tts"
+    output_file: tmp/
+    text_lang: "auto"
+    ref_audio_path: "caixukun.wav"
+    prompt_lang: "zh"
+    prompt_text: ""
+    top_k: 5
+    top_p: 1
+    temperature: 1
+    sample_steps: 16
+    media_type: "wav"
+    streaming_mode: false
+    threshold: 30
   MinimaxTTS:
     # Minimax语音合成服务，需要先在minimax平台创建账户充值，并获取登录信息
     # 平台地址：https://platform.minimaxi.com/
@@ -321,7 +383,7 @@ TTS:
   TTS302AI:
     # 302AI语音合成服务，需要先在302平台创建账户充值，并获取密钥信息
     # 获取api_keyn路径：https://dash.302.ai/apis/list
-    # 价格，$35/百万字符。火山原版¥450元/万字符
+    # 价格，$35/百万字符。火山原版¥450元/百万字符
     type: doubao
     api_url: https://api.302ai.cn/doubao/tts_hd
     authorization: "Bearer "
@@ -358,6 +420,21 @@ TTS:
     # 语速范围0.25-4.0
     speed: 1
     output_file: tmp/
+  CustomTTS:
+    # 自定义的TTS接口服务，请求参数可自定义
+    # 要求接口使用GET方式请求，并返回音频文件
+    type: custom
+    url: "http://127.0.0.1:9880/tts"
+    params: # 自定义请求参数
+      # text: "{prompt_text}" # {prompt_text}会被替换为实际的提示词内容
+      # speaker: jok老师
+      # speed: 1
+      # foo: bar
+      # testabc: 123456
+    headers: # 自定义请求头
+      # Authorization: Bearer xxxx
+    format: wav # 接口返回的音频格式
+    output_file: tmp/
 # 模块测试配置
 module_test:
   test_sentences:  # 自定义测试语句
@@ -367,18 +444,6 @@ module_test:
 
 # 本地音乐播放配置
 music:
-  music_commands:
-    - "来一首歌"
-    - "唱一首歌"
-    - "播放音乐"
-    - "来点音乐"
-    - "背景音乐"
-    - "放首歌"
-    - "播放歌曲"
-    - "来点背景音乐"
-    - "我想听歌"
-    - "我要听歌"
-    - "放点音乐"
   music_dir: "./music"  # 音乐文件存放路径，将从该目录及子目录下搜索音乐文件
   music_ext: # 音乐文件类型，p3格式效率最高
     - ".mp3"
